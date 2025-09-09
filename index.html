@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jogo da Cobrinha</title>
+  <style>
+    :root { --bg: #0f172a; --panel: #111827; --text: #e5e7eb; }
+    body { margin: 0; font-family: system-ui; background: #0f172a; color: var(--text); display: flex; justify-content: center; }
+    .container { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; width: 100%; max-width: 1200px; padding: 16px; }
+    .ad-side { background: #111; border: 1px solid #1f2937; border-radius: 12px; padding: 8px; text-align: center; color: #aaa; min-height: 400px; }
+    .ad-side p { font-size: 14px; opacity: 0.7; }
+    .wrap { width: min(92vw, 560px); display: grid; gap: 12px; }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    h1 { margin: 0; }
+    .scores { display: flex; gap: 12px; }
+    .badge { background: #0b1222; border: 1px solid #1f2937; padding: 6px 10px; border-radius: 999px; }
+    .panel { background: #111; border: 1px solid #1f2937; border-radius: 16px; padding: 12px; }
+    canvas { width: 100%; aspect-ratio: 1 / 1; display: block; border-radius: 12px; background: var(--panel); }
+    .controls { display: grid; gap: 10px; }
+    .btn { padding: 8px 12px; border-radius: 8px; cursor: pointer; border: 1px solid #333; background: #0b1222; color: var(--text); }
+    .dpad { display: grid; grid-template-columns: repeat(3, 64px); grid-auto-rows: 64px; gap: 8px; justify-content: center; }
+    .dpad .spacer { visibility: hidden; }
+
+    @media (max-width: 800px) {
+      .container { grid-template-columns: 1fr; }
+      .ad-side { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="ad-side">
+      <!-- Anúncio lateral esquerda -->
+      <p>[Espaço para anúncio esquerdo]</p>
+    </div>
+
+    <div class="wrap">
+      <header>
+        <h1>🐍 Cobrinha</h1>
+        <div class="scores">
+          <div class="badge">Pontuação: <span id="score">0</span></div>
+          <div class="badge">Recorde: <span id="best">0</span></div>
+        </div>
+      </header>
+
+      <div class="panel">
+        <canvas id="game"></canvas>
+      </div>
+
+      <div class="controls">
+        <button id="btn-reset" class="btn">🔄 Reiniciar</button>
+        <button id="btn-pause" class="btn">⏯️ Pausar</button>
+        <label><input type="checkbox" id="chk-wrap"> Atravessar paredes</label>
+        <div class="dpad">
+          <div class="spacer"></div>
+          <button class="btn" data-dir="up">⬆️</button>
+          <div class="spacer"></div>
+          <button class="btn" data-dir="left">⬅️</button>
+          <button class="btn" data-dir="down">⬇️</button>
+          <button class="btn" data-dir="right">➡️</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ad-side">
+      <!-- Anúncio lateral direita -->
+      <p>[Espaço para anúncio direito]</p>
+    </div>
+  </div>
+
+  <!-- Script do Google AdSense (adicione seu client ID quando tiver aprovado) -->
+  <!--
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=SEU_ID_UNICO"
+       crossorigin="anonymous"></script>
+  -->
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const COLS = 20, ROWS = 20;
+    let cell = 20;
+    canvas.width = 400; canvas.height = 400; cell = canvas.width / COLS;
+
+    const DIRS = { up:{x:0,y:-1}, down:{x:0,y:1}, left:{x:-1,y:0}, right:{x:1,y:0} };
+    let snake, dir, nextDir, food, score, best, alive, paused, tickMs;
+    let wrapWalls = false;
+
+    function init() {
+      snake = [ {x:10, y:10}, {x:9, y:10}, {x:8, y:10} ];
+      dir = DIRS.right; nextDir = dir;
+      food = spawnFood();
+      score = 0; alive = true; paused = false;
+      tickMs = 140;
+      updateScore();
+      draw();
+    }
+
+    function updateScore() {
+      document.getElementById('score').textContent = score;
+      const saved = Number(localStorage.getItem('snake_best') || 0);
+      if (score > saved) localStorage.setItem('snake_best', String(score));
+      best = Number(localStorage.getItem('snake_best') || 0);
+      document.getElementById('best').textContent = best;
+    }
+
+    function spawnFood() {
+      let x,y;
+      do { x = Math.floor(Math.random()*COLS); y = Math.floor(Math.random()*ROWS); }
+      while(snake.some(s=>s.x===x&&s.y===y));
+      return {x,y};
+    }
+
+    function step() {
+      dir = nextDir;
+      let head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+      if (wrapWalls) {
+        head.x = (head.x + COLS) % COLS;
+        head.y = (head.y + ROWS) % ROWS;
+      } else {
+        if (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS) { alive=false; return; }
+      }
+
+      if (snake.some(s=>s.x===head.x && s.y===head.y)) { alive=false; return; }
+
+      snake.unshift(head);
+      if (head.x === food.x && head.y === food.y) {
+        score++; updateScore();
+        food = spawnFood();
+      } else {
+        snake.pop();
+      }
+    }
+
+    function draw() {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = 'red';
+      ctx.fillRect(food.x*cell, food.y*cell, cell, cell);
+      ctx.fillStyle = 'lime';
+      snake.forEach(s => ctx.fillRect(s.x*cell, s.y*cell, cell, cell));
+      if (!alive) { ctx.fillStyle = '#fff'; ctx.fillText('Fim de jogo - R para reiniciar', 50, canvas.height/2); }
+    }
+
+    function loop() {
+      if (alive && !paused) step();
+      draw();
+    }
+
+    setInterval(loop, 150);
+
+    const keyMap = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right' };
+    document.addEventListener('keydown', e=>{
+      if (e.key==='r'||e.key==='R') init();
+      if (e.code==='Space') paused=!paused;
+      if (keyMap[e.key]) {
+        const nd = DIRS[keyMap[e.key]];
+        if (dir.x+nd.x!==0 || dir.y+nd.y!==0) nextDir=nd;
+      }
+    });
+
+    document.querySelectorAll('[data-dir]').forEach(btn=>btn.onclick=()=>{
+      const nd = DIRS[btn.dataset.dir];
+      if (dir.x+nd.x!==0 || dir.y+nd.y!==0) nextDir=nd;
+    });
+
+    document.getElementById('btn-reset').onclick=init;
+    document.getElementById('btn-pause').onclick=()=>paused=!paused;
+    document.getElementById('chk-wrap').onchange=e=>wrapWalls=e.target.checked;
+
+    init();
+  </script>
+</body>
+</html>
